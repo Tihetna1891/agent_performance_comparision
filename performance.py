@@ -469,6 +469,50 @@ def calculate_benchmark_prices(filtered_survey, selected_date_range, selected_pr
     
 #     # Convert to DataFrame for easier display
 #     return pd.DataFrame(comparison_results)
+# def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_date_range):
+#     comparison_results = []
+#     start_date, end_date = selected_date_range
+#     filtered_farm_data = farm_data[
+#         (farm_data['Timestamp'] >= start_date) &
+#         (farm_data['Timestamp'] <= end_date) &
+#         (farm_data['Products List'] == selected_product)
+#     ]
+    
+#     # Loop over each row in the farm data to compare
+#     for index, row in filtered_farm_data.iterrows():
+#         date_ = row['Timestamp']  # Use the actual date from farm_data
+#         location = row['Location_x']
+#         farm_price = row['Unit Price']
+        
+#         vendor_name = row.get('Vendor Name', 'Unknown Vendor')
+#         product_name = row.get('Products List', 'Unknown Product')
+        
+#         # Check if there are corresponding benchmark prices
+#         for group, prices in benchmark_prices.items():
+#             min_price = prices.get("min_price", None)
+#             avg_price = prices.get("avg_price", None)
+            
+#             if min_price and avg_price:
+#                 min_diff = ((farm_price - min_price) / min_price) * 100
+#                 avg_diff = ((farm_price - avg_price) / avg_price) * 100
+                
+#                 # Store comparison results
+#                 comparison_results.append({
+#                     "date_": date_,
+#                     "Products List": product_name,
+#                     "Vendor Name": vendor_name,
+#                     "Location": location,
+#                     "Farm Price (Unit Price)": farm_price,
+#                     f"Min Price ({group})": min_price,
+#                     f"Min Difference % ({group})": min_diff,
+#                     f"Avg Price ({group})": avg_price,
+#                     f"Avg Difference % ({group})": avg_diff
+#                 })
+    
+#     # Convert to DataFrame for easier display
+#     return pd.DataFrame(comparison_results)
+import math
+
 def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_date_range):
     comparison_results = []
     start_date, end_date = selected_date_range
@@ -477,6 +521,7 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
         (farm_data['Timestamp'] <= end_date) &
         (farm_data['Products List'] == selected_product)
     ]
+    
     
     # Loop over each row in the farm data to compare
     for index, row in filtered_farm_data.iterrows():
@@ -487,12 +532,22 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
         vendor_name = row.get('Vendor Name', 'Unknown Vendor')
         product_name = row.get('Products List', 'Unknown Product')
         
+        # Ensure farm_price is a float
+        try:
+            farm_price = float(farm_price)
+        except ValueError:
+            st.write(f"Invalid farm price found at index {index} - Value: {farm_price}")
+            st.write(f"Row details: {row}")
+            continue  # Skip this row if farm_price is not a valid number
+        
+        
         # Check if there are corresponding benchmark prices
         for group, prices in benchmark_prices.items():
             min_price = prices.get("min_price", None)
             avg_price = prices.get("avg_price", None)
             
-            if min_price and avg_price:
+            # Ensure min_price and avg_price are numbers (not None or NaN)
+            if min_price is not None and not math.isnan(min_price) and avg_price is not None and not math.isnan(avg_price):
                 min_diff = ((farm_price - min_price) / min_price) * 100
                 avg_diff = ((farm_price - avg_price) / avg_price) * 100
                 
@@ -518,14 +573,14 @@ farm_data_filtered = merged_data[merged_data['Products List'] == selected_produc
 benchmark_prices = calculate_benchmark_prices(filtered_survey, selected_date_range, selected_product)
 price_comparison_df = compare_farm_prices_with_benchmarks(farm_data_filtered, benchmark_prices,selected_date_range)
 
-try:
-    if not price_comparison_df.empty:
-        st.write("Price Comparison between Farm Buying Prices and Benchmark Prices")
-        st.dataframe(price_comparison_df)
-    else:
-        st.warning("No price comparison data found for the selected criteria.")
-except Exception as e:
-    st.error(f"Failed to display price comparison: {e}")
+# try:
+#     if not price_comparison_df.empty:
+#         st.write("Price Comparison between Farm Buying Prices and Benchmark Prices")
+#         st.dataframe(price_comparison_df)
+#     else:
+#         st.warning("No price comparison data found for the selected criteria.")
+# except Exception as e:
+#     st.error(f"Failed to display price comparison: {e}")
 
 # KPIs - Calculate performance metrics
 st.subheader("Performance KPIs")
@@ -600,6 +655,14 @@ selected_frequency = st.sidebar.selectbox('Select Frequency', list(frequency_opt
 
 price_aggregated = aggregate_price_difference_by_frequency(filtered_price_comparison_df, frequency_options[selected_frequency])
 
+try:
+    if not price_comparison_df.empty:
+        st.write("Price Comparison between Farm Buying Prices and Benchmark Prices")
+        st.dataframe(price_aggregated)
+    else:
+        st.warning("No price comparison data found for the selected criteria.")
+except Exception as e:
+    st.error(f"Failed to display price comparison: {e}")
 def visualize_min_avg_comparison(price_aggregated, selected_frequency):
     # List of possible columns for Min and Avg price differences
     min_columns = [

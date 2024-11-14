@@ -497,22 +497,7 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
     
     # Convert to DataFrame for easier display
     return pd.DataFrame(comparison_results)
-# def get_min_prices_by_location_and_date(farm_data, selected_date_range, selected_product):
-#     start_date, end_date = selected_date_range
-#     filtered_farm_data = farm_data[
-#         (farm_data['Timestamp'] >= start_date) &
-#         (farm_data['Timestamp'] <= end_date) &
-#         (farm_data['Products List'] == selected_product)
-#     ]
-#     # st.write(filtered_farm_data)
-#     # Group by Location and Date, and calculate the minimum price for each group
-#     location_date_min_prices = (
-#         filtered_farm_data.groupby(["Location_x", "Timestamp" , "Products List"])["Unit Price"]
-#         .min()
-#         .reset_index()
-#     )
-#     location_date_min_prices.columns = ["Location_x", "Timestamp", "Products List","Min Farm Price"]
-#     return location_date_min_prices
+
 def get_min_avg_prices_by_location_and_date(farm_data, selected_date_range, selected_product):
     start_date, end_date = selected_date_range
     filtered_farm_data = farm_data[

@@ -446,6 +446,10 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
         (farm_data['Timestamp'] <= end_date) &
         (farm_data['Products List'] == selected_product)
     ]
+    # Calculate min and avg farm price within the selected date range
+    min_farm_price = filtered_farm_data['Unit Price'].min()
+    avg_farm_price = filtered_farm_data['Unit Price'].mean()
+    
     
     
     # Loop over each row in the farm data to compare
@@ -473,8 +477,8 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
             
             # Ensure min_price and avg_price are numbers (not None or NaN)
             if min_price is not None and not math.isnan(min_price) and avg_price is not None and not math.isnan(avg_price):
-                min_diff = ((farm_price - min_price) / min_price) * 100
-                avg_diff = ((farm_price - avg_price) / avg_price) * 100
+                min_diff = ((min_farm_price - min_price) / min_price) * 100
+                avg_diff = ((avg_farm_price - avg_price) / avg_price) * 100
                 
                 # Store comparison results
                 comparison_results.append({
@@ -482,7 +486,9 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
                     "Products List": product_name,
                     "Vendor Name": vendor_name,
                     "Location": location,
-                    "Farm Price (Unit Price)": farm_price,
+                    # "Farm Price (Unit Price)": farm_price,
+                    "Min Farm Price": min_farm_price,
+                    "Avg Farm Price": avg_farm_price,
                     f"Min Price ({group})": min_price,
                     f"Min Difference % ({group})": min_diff,
                     f"Avg Price ({group})": avg_price,
@@ -621,10 +627,10 @@ def aggregate_price_difference_by_frequency(df, frequency):
     df['date_'] = pd.to_datetime(df['date_'])
     
     # Define all possible columns for aggregation
-    min_columns = ['Min Difference % (Local Shops)', 'Min Difference % (Supermarkets)', 
+    min_columns = ['Min Farm Price','Min Difference % (Local Shops)', 'Min Difference % (Supermarkets)', 
                    'Min Difference % (Sunday Markets)', 'Min Difference % (Distribution Centers)']
     
-    avg_columns = ['Avg Difference % (Local Shops)', 'Avg Difference % (Supermarkets)', 
+    avg_columns = ['Avg Farm Price','Avg Difference % (Local Shops)', 'Avg Difference % (Supermarkets)', 
                    'Avg Difference % (Sunday Markets)', 'Avg Difference % (Distribution Centers)']
     
     # Find which columns exist in the DataFrame
@@ -657,10 +663,10 @@ def aggregate_price_difference_by_frequency_location(df, frequency):
     df['date_'] = pd.to_datetime(df['date_'])
     
     # Define all possible columns for aggregation
-    min_columns = ['Min Difference % (Local Shops)', 'Min Difference % (Supermarkets)', 
+    min_columns = ['Min Farm Price','Min Difference % (Local Shops)', 'Min Difference % (Supermarkets)', 
                    'Min Difference % (Sunday Markets)', 'Min Difference % (Distribution Centers)']
     
-    avg_columns = ['Avg Difference % (Local Shops)', 'Avg Difference % (Supermarkets)', 
+    avg_columns = ['Avg Farm Price','Avg Difference % (Local Shops)', 'Avg Difference % (Supermarkets)', 
                    'Avg Difference % (Sunday Markets)', 'Avg Difference % (Distribution Centers)']
     
     # Find which columns exist in the DataFrame

@@ -11,6 +11,7 @@ from datetime import datetime
 import re
 import plotly.express as px
 import streamlit as st
+import math
 credentials_info = {
         "type": st.secrets["google_credentials"]["type"],
         "project_id": st.secrets["google_credentials"]["project_id"],
@@ -435,83 +436,7 @@ def calculate_benchmark_prices(filtered_survey, selected_date_range, selected_pr
             }
     
     return benchmark_prices
-# def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices):
-#     comparison_results = []
-    
-#     # Loop over each row in the Farm_ data to compare
-#     for index, row in farm_data.iterrows():
-#         location = row['Location_x']
-#         farm_price = row['Unit Price']
-        
-#         vendor_name = row.get('Vendor Name', 'Unknown Vendor')
-#         product_name =row.get('Products List','Unknown Product')
-#         # Check if there are corresponding benchmark prices
-#         for group, prices in benchmark_prices.items():
-#             min_price = prices.get("min_price", None)
-#             avg_price = prices.get("avg_price", None)
-            
-#             if min_price and avg_price:
-#                 min_diff = ((farm_price - min_price) / min_price) * 100
-#                 avg_diff = ((farm_price - avg_price) / avg_price) * 100
-                
-#                 # Store comparison results
-#                 comparison_results.append({
-#                     "date_": date_str,
-#                     "Products List": product_name,
-#                     "Vendor Name": vendor_name,
-#                     "Location": location,
-#                     "Farm Price (Unit Price)": farm_price,
-#                     f"Min Price ({group})": min_price,
-#                     f"Min Difference % ({group})": min_diff,
-#                     f"Avg Price ({group})": avg_price,
-#                     f"Avg Difference % ({group})": avg_diff
-#                 })
-    
-#     # Convert to DataFrame for easier display
-#     return pd.DataFrame(comparison_results)
-# def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_date_range):
-#     comparison_results = []
-#     start_date, end_date = selected_date_range
-#     filtered_farm_data = farm_data[
-#         (farm_data['Timestamp'] >= start_date) &
-#         (farm_data['Timestamp'] <= end_date) &
-#         (farm_data['Products List'] == selected_product)
-#     ]
-    
-#     # Loop over each row in the farm data to compare
-#     for index, row in filtered_farm_data.iterrows():
-#         date_ = row['Timestamp']  # Use the actual date from farm_data
-#         location = row['Location_x']
-#         farm_price = row['Unit Price']
-        
-#         vendor_name = row.get('Vendor Name', 'Unknown Vendor')
-#         product_name = row.get('Products List', 'Unknown Product')
-        
-#         # Check if there are corresponding benchmark prices
-#         for group, prices in benchmark_prices.items():
-#             min_price = prices.get("min_price", None)
-#             avg_price = prices.get("avg_price", None)
-            
-#             if min_price and avg_price:
-#                 min_diff = ((farm_price - min_price) / min_price) * 100
-#                 avg_diff = ((farm_price - avg_price) / avg_price) * 100
-                
-#                 # Store comparison results
-#                 comparison_results.append({
-#                     "date_": date_,
-#                     "Products List": product_name,
-#                     "Vendor Name": vendor_name,
-#                     "Location": location,
-#                     "Farm Price (Unit Price)": farm_price,
-#                     f"Min Price ({group})": min_price,
-#                     f"Min Difference % ({group})": min_diff,
-#                     f"Avg Price ({group})": avg_price,
-#                     f"Avg Difference % ({group})": avg_diff
-#                 })
-    
-#     # Convert to DataFrame for easier display
-#     return pd.DataFrame(comparison_results)
-import math
+
 
 def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_date_range):
     comparison_results = []
@@ -566,21 +491,111 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
     
     # Convert to DataFrame for easier display
     return pd.DataFrame(comparison_results)
+# def get_min_prices_by_location_and_date(farm_data, selected_date_range, selected_product):
+#     start_date, end_date = selected_date_range
+#     filtered_farm_data = farm_data[
+#         (farm_data['Timestamp'] >= start_date) &
+#         (farm_data['Timestamp'] <= end_date) &
+#         (farm_data['Products List'] == selected_product)
+#     ]
+#     # st.write(filtered_farm_data)
+#     # Group by Location and Date, and calculate the minimum price for each group
+#     location_date_min_prices = (
+#         filtered_farm_data.groupby(["Location_x", "Timestamp" , "Products List"])["Unit Price"]
+#         .min()
+#         .reset_index()
+#     )
+#     location_date_min_prices.columns = ["Location_x", "Timestamp", "Products List","Min Farm Price"]
+#     return location_date_min_prices
+def get_min_avg_prices_by_location_and_date(farm_data, selected_date_range, selected_product):
+    start_date, end_date = selected_date_range
+    filtered_farm_data = farm_data[
+        (farm_data['Timestamp'] >= start_date) &
+        (farm_data['Timestamp'] <= end_date) &
+        (farm_data['Products List'] == selected_product)
+    ]
 
+    # Group by Location, Date, and Product, then calculate the minimum and average price for each group
+    location_date_prices = (
+        filtered_farm_data.groupby(["Location_x", "Timestamp", "Products List"])["Unit Price"]
+        .agg(Min_Farm_Price='min', Avg_Farm_Price='mean')
+        .reset_index()
+    )
+    # location_date_prices.columns = ["Location_x", "Timestamp", "Products List","Min Farm Price","Avg Farm Price"]
+    return location_date_prices
+
+
+def compare_farm_prices_with_benchmarks_by_location(farm_data, benchmark_prices, selected_date_range):
+    comparison_results = []
+    min_prices_by_location_and_date = get_min_avg_prices_by_location_and_date(farm_data, selected_date_range, selected_product)
+    # st.write(min_prices_by_location_and_date)
+    for _, row in min_prices_by_location_and_date.iterrows():
+        date_ = row['Timestamp']
+        location = row['Location_x']
+        min_farm_price = row['Min_Farm_Price']
+        avg_farm_price = row['Avg_Farm_Price']
+        product_name = row.get('Products List', 'Unknown Product')  # Retrieve the product name
+        
+        # Compare with benchmark prices for each location group
+        for group, prices in benchmark_prices.items():
+            min_price = prices.get("min_price", None)
+            avg_price = prices.get("avg_price", None)
+            # Ensure min_price and avg_price are numbers
+            if min_price is not None:
+                try:
+                    min_price = float(min_price)
+                except ValueError:
+                    min_price = None  # Set to None if conversion fails
+
+            if avg_price is not None:
+                try:
+                    avg_price = float(avg_price)
+                except ValueError:
+                    avg_price = None  # Set to None if conversion fails
+
+            
+            if min_price is not None and not math.isnan(min_price):
+                min_diff = ((min_farm_price - min_price) / min_price) * 100
+            else:
+                min_diff = None
+            
+            if avg_price is not None and not math.isnan(avg_price):
+                avg_diff = ((avg_farm_price - avg_price) / avg_price) * 100
+            else:
+                avg_diff = None
+            
+            # Store comparison results
+            comparison_results.append({
+                "date_": date_,
+                "Products List": product_name,
+                "Location_x": location,
+                "Min Farm Price": min_farm_price,
+                "Avg Farm Price": avg_farm_price,
+                f"Min Price ({group})": min_price,
+                f"Min Difference % ({group})": min_diff,
+                f"Avg Price ({group})": avg_price,
+                f"Avg Difference % ({group})": avg_diff
+            })
+    
+    # Convert to DataFrame for easier display
+    return pd.DataFrame(comparison_results)
+
+
+
+# price_comparison_by_location_df = compare_farm_prices_with_benchmarks_by_location(farm_data_filtered, benchmark_prices, selected_date_range)
+
+
+# st.write(farm_data_filtered)
 
 # Use the function
 farm_data_filtered = merged_data[merged_data['Products List'] == selected_product]
+# st.write(farm_data_filtered)
 benchmark_prices = calculate_benchmark_prices(filtered_survey, selected_date_range, selected_product)
 price_comparison_df = compare_farm_prices_with_benchmarks(farm_data_filtered, benchmark_prices,selected_date_range)
-
-# try:
-#     if not price_comparison_df.empty:
-#         st.write("Price Comparison between Farm Buying Prices and Benchmark Prices")
-#         st.dataframe(price_comparison_df)
-#     else:
-#         st.warning("No price comparison data found for the selected criteria.")
-# except Exception as e:
-#     st.error(f"Failed to display price comparison: {e}")
+min_prices_by_location_and_date = get_min_avg_prices_by_location_and_date(farm_data_filtered, selected_date_range, selected_product)
+# st.write(min_prices_by_location_and_date)
+# min_prices_by_location = get_min_prices_by_location(farm_data_filtered, selected_date_range, selected_product)
+comparison_results = compare_farm_prices_with_benchmarks_by_location(farm_data_filtered, benchmark_prices,  selected_date_range)
 
 # KPIs - Calculate performance metrics
 st.subheader("Performance KPIs")
@@ -637,9 +652,45 @@ def aggregate_price_difference_by_frequency(df, frequency):
 
     return grouped_df
 
+def aggregate_price_difference_by_frequency_location(df, frequency):
+    # Ensure the date column is in datetime format
+    df['date_'] = pd.to_datetime(df['date_'])
+    
+    # Define all possible columns for aggregation
+    min_columns = ['Min Difference % (Local Shops)', 'Min Difference % (Supermarkets)', 
+                   'Min Difference % (Sunday Markets)', 'Min Difference % (Distribution Centers)']
+    
+    avg_columns = ['Avg Difference % (Local Shops)', 'Avg Difference % (Supermarkets)', 
+                   'Avg Difference % (Sunday Markets)', 'Avg Difference % (Distribution Centers)']
+    
+    # Find which columns exist in the DataFrame
+    existing_min_columns = [col for col in min_columns if col in df.columns]
+    existing_avg_columns = [col for col in avg_columns if col in df.columns]
+
+    # Create a dictionary for aggregation based on available columns
+    agg_dict = {}
+    
+    for col in existing_min_columns:
+        agg_dict[col] = 'min'
+    
+    for col in existing_avg_columns:
+        agg_dict[col] = 'mean'
+
+    # Group by Vendor Name and selected frequency only for the existing columns
+    if agg_dict:
+        grouped_df = df.groupby([
+            'Location_x',
+            pd.Grouper(key='date_', freq=frequency)
+        ]).agg(agg_dict).reset_index()
+    else:
+        # If no relevant columns exist, return an empty DataFrame
+        grouped_df = pd.DataFrame()
+
+    return grouped_df
 # Apply the filtering
 filtered_price_comparison_df = filter_data_by_product_and_date(price_comparison_df, selected_product, selected_date_range)
-
+filtered_price_comparision_by_location = filter_data_by_product_and_date(comparison_results, selected_product, selected_date_range)
+# st.dataframe(filtered_price_comparision_by_location)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -652,18 +703,27 @@ frequency_options = {
 }
 selected_frequency = st.sidebar.selectbox('Select Frequency', list(frequency_options.keys()))
 
-
 price_aggregated = aggregate_price_difference_by_frequency(filtered_price_comparison_df, frequency_options[selected_frequency])
-
+price_by_location_aggregated = aggregate_price_difference_by_frequency_location(filtered_price_comparision_by_location, frequency_options[selected_frequency])
 try:
     if not price_comparison_df.empty:
-        st.write("Price Comparison between Farm Buying Prices and Benchmark Prices")
+        st.write("Price Comparison between Farm Buying Prices and Benchmark Prices based on Vendors")
         st.dataframe(price_aggregated)
     else:
         st.warning("No price comparison data found for the selected criteria.")
 except Exception as e:
     st.error(f"Failed to display price comparison: {e}")
-def visualize_min_avg_comparison(price_aggregated, selected_frequency):
+try:
+    if not price_by_location_aggregated.empty:
+        st.write("Price Comparison between Farm Buying Prices and Benchmark Prices based on Location")
+        st.dataframe(price_by_location_aggregated)
+    else:
+        st.warning("No price comparison data found for the selected criteria.")
+except Exception as e:
+    st.error(f"Failed to display price comparison: {e}")
+    
+
+def visualize_min_avg_comparison(price_aggregated, selected_frequency, x_column, xaxis_title, chart_key_suffix):
     # List of possible columns for Min and Avg price differences
     min_columns = [
         'Min Difference % (Local Shops)', 
@@ -694,7 +754,7 @@ def visualize_min_avg_comparison(price_aggregated, selected_frequency):
     # Create Min price comparison chart
     fig_min = px.bar(
         price_aggregated.dropna(subset=available_min_columns), 
-        x='Vendor Name', 
+        x=x_column, 
         y=available_min_columns,
         color_discrete_sequence=['#0055A4', '#6CA0DC', '#FF4D4D', '#FFC1C1'],
         barmode='group',
@@ -706,7 +766,7 @@ def visualize_min_avg_comparison(price_aggregated, selected_frequency):
     fig_min.update_layout(
         title_x=0.5,
         yaxis_title='Price Difference (%)',
-        xaxis_title='Vendor Name',
+        xaxis_title=xaxis_title,
         legend_title_text='Benchmark Market',
         xaxis_tickangle=-45
     )
@@ -714,7 +774,7 @@ def visualize_min_avg_comparison(price_aggregated, selected_frequency):
     # Create Avg price comparison chart
     fig_avg = px.bar(
         price_aggregated.dropna(subset=available_avg_columns), 
-        x='Vendor Name', 
+        x=x_column, 
         y=available_avg_columns,
         color_discrete_sequence=['#0055A4', '#6CA0DC', '#FF4D4D', '#FFC1C1'],
         barmode='group',
@@ -726,23 +786,32 @@ def visualize_min_avg_comparison(price_aggregated, selected_frequency):
     fig_avg.update_layout(
         title_x=0.5,
         yaxis_title='Price Difference (%)',
-        xaxis_title='Vendor Name',
+        xaxis_title=xaxis_title,
         legend_title_text='Benchmark Market',
         xaxis_tickangle=-45
     )
 
-    # Display charts in Streamlit
-    st.plotly_chart(fig_min, use_container_width=True, key="min_chart")
-    st.plotly_chart(fig_avg, use_container_width=True, key="avg_chart")
+    # Display charts in Streamlit with unique keys
+    st.plotly_chart(fig_min, use_container_width=True, key=f"min_chart_{chart_key_suffix}")
+    st.plotly_chart(fig_avg, use_container_width=True, key=f"avg_chart_{chart_key_suffix}")
 
-
-
-# Call this function after filtering data
+# Call this function with different parameters based on the DataFrame being used
 try:
     if not price_aggregated.empty:
         st.write(f"Visualizing Price Comparison for {selected_product} Between Vendors and Benchmark Markets")
-        visualize_min_avg_comparison(price_aggregated,selected_frequency)
+        visualize_min_avg_comparison(price_aggregated, selected_frequency, x_column='Vendor Name', xaxis_title='Vendor Name', chart_key_suffix='price_aggregated')
     else:
         st.warning("No price comparison data found for the selected product and date range.")
 except Exception as e:
     st.error(f"Failed to display price comparison visualization: {e}")
+
+try:
+    if not price_by_location_aggregated.empty:
+        st.write(f"Visualizing Price Comparison for {selected_product} Between Vendors and Benchmark Markets")
+        visualize_min_avg_comparison(price_by_location_aggregated, selected_frequency, x_column='Location_x', xaxis_title='Location', chart_key_suffix='price_by_location_aggregated')
+    else:
+        st.warning("No price comparison data found for the selected product and date range.")
+except Exception as e:
+    st.error(f"Failed to display price comparison visualization: {e}")
+
+

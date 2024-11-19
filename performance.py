@@ -166,7 +166,7 @@ try:
     filtered_survey = survey[(survey['Timestamp'] >= start_date) & (survey['Timestamp'] <= end_date)]
     available_products = filtered_survey['Products List'].unique()
     available_locations = filtered_survey['Location'].unique()
-    selected_product = st.sidebar.selectbox("Select Product", available_products, key='unique_key_2')
+    selected_product =  st.sidebar.selectbox("Select Product", available_products, key='unique_key_2')
     end_date_data = survey[(survey['Products List'] == selected_product) & (survey['Timestamp'] == end_date)]
     combined = concatenate_dfs(survey)
    
@@ -804,5 +804,93 @@ try:
         st.warning("No price comparison data found for the selected product and date range.")
 except Exception as e:
     st.error(f"Failed to display price comparison visualization: {e}")
+import plotly.express as px
+import plotly.graph_objs as go
 
+def plot_price_trend(farm_data, selected_product, selected_vendor, selected_date_range, frequency): 
+    # Unpack start and end dates from the selected range
+    start_date, end_date = [pd.to_datetime(date) for date in selected_date_range]
+    pandas_frequency = frequency_options.get(frequency)
+    
+    # Ensure valid frequency
+    if pandas_frequency is None:
+        st.error(f"Invalid frequency: {frequency}")
+        return
 
+    # Convert 'date_' column to datetime format
+    farm_data['date_'] = pd.to_datetime(farm_data['date_'])
+    
+    # Filter data based on the selected product, vendor, and date range
+    filtered_data = farm_data[
+        (farm_data['Products List'] == selected_product) &
+        (farm_data['Vendor Name'] == selected_vendor) &
+        (farm_data['date_'] >= start_date) &
+        (farm_data['date_'] <= end_date)
+    ]
+    
+    # If a frequency is provided, resample the data accordingly
+    if frequency:
+        resampled_data = (
+            filtered_data.set_index('date_')
+            .resample(pandas_frequency)['Min Difference % (Local Shops)', 'Min Difference % (Supermarkets)', 'Min Difference % (Sunday Markets)']
+            .mean()
+            .reset_index()
+        )
+    else:
+        resampled_data = filtered_data
+
+    # Format date for better readability (only date, no time)
+    resampled_data['date_'] = resampled_data['date_'].dt.date
+
+    # Create the Plotly figure
+    fig = go.Figure()
+
+    # Add traces for each vendor type with data labels
+    fig.add_trace(go.Scatter(
+        x=resampled_data['date_'], 
+        y=resampled_data['Min Difference % (Local Shops)'], 
+        mode='lines+markers+text', 
+        name='Min Difference % (Local Shops)',
+        line=dict(color='blue'),
+        text=resampled_data['Min Difference % (Local Shops)'].round(2),  # Show values rounded to 2 decimals
+        textposition="top center"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=resampled_data['date_'], 
+        y=resampled_data['Min Difference % (Supermarkets)'], 
+        mode='lines+markers+text', 
+        name='Min Difference % (Supermarkets)',
+        line=dict(color='red'),
+        text=resampled_data['Min Difference % (Supermarkets)'].round(2),
+        textposition="top center"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=resampled_data['date_'], 
+        y=resampled_data['Min Difference % (Sunday Markets)'], 
+        mode='lines+markers+text', 
+        name='Min Difference % (Sunday Markets)',
+        line=dict(color='orange'),
+        text=resampled_data['Min Difference % (Sunday Markets)'].round(2),
+        textposition="top center"
+    ))
+
+    # Set title and axis labels
+    fig.update_layout(
+        title=f"Min Difference % Comparison for {selected_product} ({selected_vendor})",
+        xaxis_title="Date",
+        yaxis_title="Min Difference %",
+        legend_title="Vendor Types",
+        template="plotly_white",
+        xaxis=dict(tickformat="%Y-%m-%d")  # Format x-axis to show only dates
+    )
+
+    # Display the interactive Plotly plot in Streamlit
+    st.plotly_chart(fig, use_container_width=True)
+
+# st.write(price_comparison_df)
+selected_vendor = st.sidebar.selectbox('Select Vendor', price_comparison_df['Vendor Name'].unique())
+
+# Call the function to plot
+plot_price_trend(price_comparison_df, selected_product, selected_vendor, selected_date_range, selected_frequency)

@@ -1,62 +1,44 @@
 import streamlit as st
+import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-import pandas as pd
-from gspread_dataframe import set_with_dataframe
-import _thread
-import weakref
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import plotly.express as px
-from datetime import datetime
 import re
-import plotly.express as px
-import streamlit as st
+import weakref
+import _thread
 import math
-credentials_info = {
-        "type": st.secrets["google_credentials"]["type"],
-        "project_id": st.secrets["google_credentials"]["project_id"],
-        "private_key_id": st.secrets["google_credentials"]["private_key_id"],
-        "private_key": st.secrets["google_credentials"]["private_key"],
-        "client_email": st.secrets["google_credentials"]["client_email"],
-        "client_id": st.secrets["google_credentials"]["client_id"],
-        "auth_uri": st.secrets["google_credentials"]["auth_uri"],
-        "token_uri": st.secrets["google_credentials"]["token_uri"],
-        "auth_provider_x509_cert_url": st.secrets["google_credentials"]["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": st.secrets["google_credentials"]["client_x509_cert_url"]
-    }
-scope = [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive'
-    ]
-# Authenticate and access Google Sheets
-# credentials = Credentials.from_service_account_file(credentials_info, scopes=scope)
-credentials = Credentials.from_service_account_info(credentials_info, scopes=scope)
 
+# Google Sheets credentials setup
+credentials_info = {
+    "type": st.secrets["google_credentials"]["type"],
+    "project_id": st.secrets["google_credentials"]["project_id"],
+    "private_key_id": st.secrets["google_credentials"]["private_key_id"],
+    "private_key": st.secrets["google_credentials"]["private_key"],
+    "client_email": st.secrets["google_credentials"]["client_email"],
+    "client_id": st.secrets["google_credentials"]["client_id"],
+    "auth_uri": st.secrets["google_credentials"]["auth_uri"],
+    "token_uri": st.secrets["google_credentials"]["token_uri"],
+    "auth_provider_x509_cert_url": st.secrets["google_credentials"]["auth_provider_x509_cert_url"],
+    "client_x509_cert_url": st.secrets["google_credentials"]["client_x509_cert_url"]
+}
+
+scope = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
+
+# Authenticate and access Google Sheets
+credentials = Credentials.from_service_account_info(credentials_info, scopes=scope)
 client = gspread.authorize(credentials)
+
 def no_op_hash(obj):
     return str(obj)
+
 def weak_method_hash(obj):
     return str(obj)
-# spreadsheets = client.openall()
-# st.write("Available spreadsheets:")
-# for sheet in spreadsheets:
-#     st.write(sheet.title)
-            
-def clean_location_name(location, filtered_survey):
-    if not isinstance(location, str):
-        location = str(location)
-    cleaned_name = re.sub(r'benchmark location \d+', '', location)
-    cleaned_name = re.sub(r'Distribution center \d+', '', cleaned_name)
-    cleaned_name = cleaned_name.strip()
-    count = filtered_survey[filtered_survey['Location'] == location].shape[0]
-    return f"{cleaned_name} ({count})"
 
-def concatenate_dfs(*dfs):
-    concatenated_df = pd.concat(dfs, ignore_index=True)
-    return concatenated_df
 @st.cache_data(hash_funcs={_thread.RLock: no_op_hash, weakref.WeakMethod: weak_method_hash})
 def read_gsheet_to_df(sheet_name, worksheet_name):
-    
     try:
         spreadsheet = client.open(sheet_name)
     except gspread.exceptions.SpreadsheetNotFound:
@@ -70,8 +52,7 @@ def read_gsheet_to_df(sheet_name, worksheet_name):
         return None
 
     data = worksheet.get_all_records()
-    df = pd.DataFrame(data)
-    return df
+    return pd.DataFrame(data)
 
 def write_to_gsheet(sheet_name, worksheet_name, new_row):
     """Append a new row of data to the Google Sheet."""
@@ -87,15 +68,47 @@ def write_to_gsheet(sheet_name, worksheet_name, new_row):
         st.error(f"Worksheet '{worksheet_name}' not found in spreadsheet '{sheet_name}'.")
         return None
 
-    # Append new row to the worksheet
     worksheet.append_row(new_row)
-    st.success("data added successfully to the sheet!")
+    st.success("Data added successfully to the sheet!")
+
 def fetch_data(sheet_name, worksheet_name):
     try:
         return read_gsheet_to_df(sheet_name, worksheet_name)
     except Exception as e:
         st.error(f"Failed to load {worksheet_name} into DataFrame: {e}")
         return None
+
+def generate_supplier_id():
+    sheet_name = "chip"
+    worksheet_name = "agent_performance"
+
+    # Clear both data and resource caches
+    st.cache_data.clear()
+    st.cache_resource.clear()
+
+    survey_4 = read_gsheet_to_df(sheet_name, worksheet_name)
+
+    last_supplier_id = survey_4.iloc[-1]["Supplier Id"] if survey_4 is not None and not survey_4.empty else "Supplier0000"
+
+    match = re.search(r"Supplier(\d+)", last_supplier_id)
+    if match:
+        supplier_count = int(match.group(1)) + 1
+    else:
+        supplier_count = 1
+
+    return f"Supplier{str(supplier_count).zfill(4)}"
+
+def clean_location_name(location, filtered_survey):
+    if not isinstance(location, str):
+        location = str(location)
+    cleaned_name = re.sub(r'benchmark location \d+', '', location)
+    cleaned_name = re.sub(r'Distribution center \d+', '', cleaned_name)
+    cleaned_name = cleaned_name.strip()
+    count = filtered_survey[filtered_survey['Location'] == location].shape[0]
+    return f"{cleaned_name} ({count})"
+
+def concatenate_dfs(*dfs):
+    return pd.concat(dfs, ignore_index=True)
 
 sheets_and_worksheets = [
     ('chip', 'sunday'),
@@ -114,12 +127,6 @@ with ThreadPoolExecutor() as executor:
             data_frames[worksheet_name] = future.result()
         except Exception as e:
             st.error(f"Failed to load data from {worksheet_name}: {e}")
-# try:
-#     survey_0 = data_frames.get('agent_performance')
-# except Exception as e:
-#     st.error(f"Failed to load data into DataFrame: {e}")
-#     st.stop()
-required_data_frames = ['sunday', 'Localshops', 'Distribution', 'Farm_',  'agent_performance']
 
 try:
     survey_0 = data_frames.get('sunday')
@@ -127,30 +134,19 @@ try:
     survey_2 = data_frames.get('Distribution')
     survey_3 = data_frames.get('Farm_')
     survey_4 = data_frames.get('agent_performance')
-    
-
     if survey_2 is not None:
         survey_2 = survey_2.rename(columns={'Buying Price': 'Unit Price', 'Location ': 'Location', 'Product List': 'Products List'})
     if survey_3 is not None:
-        survey_3 = survey_3.rename(columns={'Buying Price per Kg ': 'Unit Price', 'Product Origin ': 'Location', 'Product List': 'Products List','Farm Source Type':'Farm_Source_Type'})
+        survey_3 = survey_3.rename(columns={'Buying Price per Kg ': 'Unit Price', 'Product Origin ': 'Location', 'Product List': 'Products List', 'Farm Source Type': 'Farm_Source_Type'})
 
-except Exception as e:
-    st.error(f"Failed to load data into DataFrame: {e}")
-    st.stop()
-# or chip_prices is None
-# if survey_0 is None or survey_1 is None or survey_2 is None or survey_3 is None :
-#     st.error("One or more data frames are not loaded correctly.")
-#     st.stop()
-
-try: 
     survey_0.iloc[:, 0] = pd.to_datetime(survey_0.iloc[:, 0], format="%m/%d/%Y %H:%M:%S").dt.date
     survey_1.iloc[:, 2] = pd.to_datetime(survey_1.iloc[:, 2], format="%Y-%m-%d %H:%M:%S").dt.date
     survey_2.iloc[:, 0] = pd.to_datetime(survey_2.iloc[:, 0], format="%m/%d/%Y %H:%M:%S").dt.date
     survey_3.iloc[:, 0] = pd.to_datetime(survey_3.iloc[:, 0], format="%m/%d/%Y %H:%M:%S").dt.date
-    # survey_4.iloc[:, 1] = pd.to_datetime(survey_4.iloc[:, 0], format="%m/%d/%Y %H:%M:%S").dt.date
+
     survey = concatenate_dfs(survey_0, survey_1, survey_2, survey_3)
 except Exception as e:
-    st.error(f'Error processing dates: {e}')
+    st.error(f"Data processing failed: {e}")
     st.stop()
 try:
     default_start = pd.to_datetime('today') - pd.to_timedelta(7, unit='d')
@@ -160,8 +156,7 @@ try:
     selected_date_range = (start_date, end_date)
 except Exception as e:
     st.error(f'Error selecting date range: {e}')
-    st.stop()
-
+    st.stop()    
 try:
     filtered_survey = survey[(survey['Timestamp'] >= start_date) & (survey['Timestamp'] <= end_date)]
     available_products = filtered_survey['Products List'].unique()
@@ -174,228 +169,18 @@ except Exception as e:
     st.error(f'Failed to select product or group: {e}')
     st.stop()
 
-location_groups = {
-    "Local Shops": [],
-    "Supermarkets": [],
-    "Sunday Markets": [],
-    "Distribution Centers": [],
-    "Farm": pd.Series(survey_3["Location"]).unique(),  
- 
-}
-
-try:
-    for location in survey["Location"].unique():
-        if re.search(r'suk', location, re.IGNORECASE):
-            location_groups["Local Shops"].append(location)
-        elif re.search(r'supermarket', location, re.IGNORECASE):
-            location_groups["Supermarkets"].append(location)
-        elif re.search(r'sunday', location, re.IGNORECASE):
-            location_groups["Sunday Markets"].append(location)
-        elif re.search(r'Distribution center', location, re.IGNORECASE):
-            location_groups["Distribution Centers"].append(location)
-     
-except Exception as e:
-    st.error(f'Failed to append location groups: {e}')
-    st.stop()
-
-try:
-    cleaned_location_groups_with_counts = {group: [clean_location_name(loc, filtered_survey) for loc in locations] for group, locations in location_groups.items()}
-    reverse_location_mapping = {clean_location_name(loc, filtered_survey): loc for loc in survey['Location'].unique()}
-    all_sorted_locations = []
-    selected_groups_default = [list(location_groups.keys())[4], list(location_groups.keys())[2], list(location_groups.keys())[1]]
-    selected_groups = st.sidebar.multiselect("Select Location Groups for Comparison", options=list(location_groups.keys()), default=selected_groups_default)
-except Exception as e:
-    st.error(f'Failed to select location groups: {e}')
-    st.stop()
-
-def generate_supplier_id():
-    sheet_name = "chip"  # Replace with your sheet name
-    worksheet_name = "agent_performance"  # Replace with worksheet name
-    
-    # Clear both data and resource caches
-    st.cache_data.clear()
-    st.cache_resource.clear()
-    
-    survey_4 = read_gsheet_to_df(sheet_name, worksheet_name)
-    
-    # Debugging log
-    # if survey_4 is not None:
-    #     st.write("Fetched row count:", survey_4.shape[0])
-    # else:
-    #     st.write("No data fetched from Google Sheet.")
-    
-    # Get the last Supplier ID in the sheet
-    last_supplier_id = survey_4.iloc[-1]["Supplier Id"] if survey_0 is not None and not survey_0.empty else "Supplier0000"
-    # st.write("Last Supplier ID in sheet:", last_supplier_id)  # Debugging log
-    
-    # Extract numeric part of the last Supplier ID
-    match = re.search(r"Supplier(\d+)", last_supplier_id)
-    if match:
-        supplier_count = int(match.group(1)) + 1
-    else:
-        supplier_count = 1  # Default to 1 if pattern does not match
-    
-    # st.write("New Supplier count before formatting:", supplier_count)  # Debugging log
-    return f"Supplier{str(supplier_count).zfill(4)}"
-
-# Create an expander for the form
-with st.expander("To add a supplier information please expand this you will get an Entry Form.", expanded=False):
-    st.subheader("Supplier Tracking Information Entry Form")
-
-    # Initialize session state for form fields
-    if 'supplier_id' not in st.session_state:
-        st.session_state['supplier_id'] = generate_supplier_id()
-
-    if 'vendor_name' not in st.session_state:
-        st.session_state['vendor_name'] = ''
-
-    if 'contact_person' not in st.session_state:
-        st.session_state['contact_person'] = ''
-
-    if 'product_name' not in st.session_state:
-        st.session_state['product_name'] = ''
-
-    if 'payment_terms' not in st.session_state:
-        st.session_state['payment_terms'] = ''
-
-    if 'return_policy' not in st.session_state:
-        st.session_state['return_policy'] = ''
-
-    if 'location' not in st.session_state:
-        st.session_state['location'] = ''
-
-    if 'phone_number' not in st.session_state:
-        st.session_state['phone_number'] = ''
-
-    # Date input
-    date_entry = st.date_input("Date", value=datetime.today())
-    date_str = date_entry.strftime("%Y-%m-%d")  # Convert date to string in 'YYYY-MM-DD' format
-
-    # Display Supplier ID (disabled)
-    supplier_id_placeholder = st.empty()
-    supplier_id_placeholder.text_input("Supplier ID", value=st.session_state['supplier_id'], disabled=True)
 
 
-    if 'Vendor Name' in survey_4.columns:
-        vendor_names = list(survey_4['Vendor Name'].unique())
-    else:
-        vendor_names = []  # Set an empty list if the column is missing or doesn't exist
 
-    vendor_names_with_add_new = [""] + vendor_names + ["Add new"]
-    vendor_selection = st.selectbox("Select or type Vendor Name", options=vendor_names_with_add_new, index=0)
-
-    if vendor_selection == "Add new":
-        st.session_state['vendor_name'] = st.text_input("Enter new Vendor Name", value='')
-    else:
-        st.session_state['vendor_name'] = vendor_selection
-    if 'Contact Person' in survey_4.columns:
-        contact_person_list = list(survey_4['Contact Person'].unique())
-    else:
-        contact_person_list = []  # Set an empty list if the column is missing or doesn't exist
-
-    contact_person_with_add_new = [""] + contact_person_list + ["Add new"]
-    contact_selection = st.selectbox("Select or type Contact Person", options=contact_person_with_add_new, index=0)
-
-    if contact_selection == "Add new":
-        st.session_state['contact_person'] = st.text_input("Enter new Contact Person", value='')
-    else:
-        st.session_state['contact_person'] = contact_selection
-
-    # Product Name input
-    if 'Product Name' in survey_4.columns:
-        product_name_list = list(survey_4['Product Name'].unique())
-    else:
-        product_name_list = []  # Set an empty list if the column is missing or doesn't exist
-
-    # product_name_list = list(survey_0['Product Name'].unique())
-    product_name_with_add_new = [""] + product_name_list + ["Add new"]
-    product_selection = st.selectbox("Select or type Product Name", options=product_name_with_add_new, index=0)
-
-    if product_selection == "Add new":
-        st.session_state['product_name'] = st.text_input("Enter new Product Name", value='')
-    else:
-        st.session_state['product_name'] = product_selection
-
-    # Price, Payment Terms, Return Policy, Location, and Phone Number inputs
-    st.session_state['price'] = st.text_input("Price", value='', placeholder="Enter Price")
-    st.session_state['payment_terms'] = st.text_input("Payment Terms", value='', placeholder="Enter Payment Terms")
-    st.session_state['return_policy'] = st.text_input("Return Policy", value='', placeholder="Enter Return Policy")
-
-    # location_list = list(survey_0['Location'].unique())
-    if 'Location' in survey_3.columns:
-        location_list = list(survey_3['Location'].unique())
-    else:
-        location_list = []  # Set an empty list if the column is missing or doesn't exist
-
-    location_with_add_new = [""] + location_list + ["Add new"]
-    location_selection = st.selectbox("Select or type Location", options=location_with_add_new, index=0)
-
-    if location_selection == "Add new":
-        st.session_state['location'] = st.text_input("Enter new Location", value='')
-    else:
-        st.session_state['location'] = location_selection
-
-    st.session_state['phone_number'] = st.text_input("Phone Number", value='', placeholder="Enter Phone Number")
-    submitted = st.button("Submit")
-
-    if submitted:
-        # Create new entry with session state values
-        new_entry = [
-            date_str, 
-            st.session_state['supplier_id'], 
-            st.session_state['vendor_name'], 
-            st.session_state['contact_person'], 
-            st.session_state['product_name'],
-            st.session_state['price'],
-            st.session_state['payment_terms'], 
-            st.session_state['return_policy'], 
-            st.session_state['location'], 
-            st.session_state['phone_number']
-        ]
-        # Write to Google Sheet
-        sheet_name = "chip"  # This should be the Google Sheet name
-        worksheet_name = "agent_performance"  # This should be the specific worksheet name
-        
-        # Write to Google Sheet (function assumed to be implemented)
-        write_to_gsheet("chip", "agent_performance", new_entry)
-        
-        # Reset Supplier ID
-        st.cache_data.clear()
-        st.cache_resource.clear()
-        st.session_state['supplier_id'] = generate_supplier_id()
-        # Update the placeholder with the new Supplier ID
-        supplier_id_placeholder.text_input("Supplier ID", value=st.session_state['supplier_id'], disabled=True)
-
-        # Clear input fields after submission
-        st.session_state['vendor_name'] = ''
-        st.session_state['contact_person'] = ''
-        st.session_state['product_name'] = ''
-        st.session_state['price'] = ''
-        st.session_state['payment_terms'] = ''
-        st.session_state['return_policy'] = ''
-        st.session_state['location'] = ''
-        st.session_state['phone_number'] = ''
-        
-        # Indicate successful form reset
-        st.success("Form Submitted and cleared!")
- 
-
-if survey_4 is not None:
-    # Ensure there are no duplicates and drop any missing values
-    dynamic_location_to_vendor_mapping = survey_4[['Location', 'Vendor Name']].drop_duplicates().dropna()
-    
-    # Convert to a dictionary for mapping
-    location_to_vendor_mapping = dict(zip(dynamic_location_to_vendor_mapping['Location'], dynamic_location_to_vendor_mapping['Vendor Name']))
-# Apply mapping to both DataFrames to create a new column for Vendor Names
-if survey_3 is not None:
-    survey_3['Vendor Name'] = survey_3['Location'].map(location_to_vendor_mapping)
-
-if survey_4 is not None:
-    survey_4['Vendor Name'] = survey_4['Location'].map(location_to_vendor_mapping)
-
-# Merge the two DataFrames based on Vendor Name or Location
-merged_data = pd.merge(survey_3, survey_4, on='Vendor Name', how='inner')
-# st.write(merged_data)
+# try:
+#     cleaned_location_groups_with_counts = {group: [clean_location_name(loc, filtered_survey) for loc in locations] for group, locations in location_groups.items()}
+#     reverse_location_mapping = {clean_location_name(loc, filtered_survey): loc for loc in survey['Location'].unique()}
+#     all_sorted_locations = []
+#     selected_groups_default = [list(location_groups.keys())[4], list(location_groups.keys())[2], list(location_groups.keys())[1]]
+#     selected_groups = st.sidebar.multiselect("Select Location Groups for Comparison", options=list(location_groups.keys()), default=selected_groups_default)
+# except Exception as e:
+#     st.error(f'Failed to select location groups: {e}')
+#     st.stop()
 
 def calculate_benchmark_prices(filtered_survey, selected_date_range, selected_product):
     # Filter data based on the date range and selected product
@@ -455,10 +240,10 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
     # Loop over each row in the farm data to compare
     for index, row in filtered_farm_data.iterrows():
         date_ = row['Timestamp']  # Use the actual date from farm_data
-        location = row['Location_x']
+        location = row['Location']
         farm_price = row['Unit Price']
         
-        vendor_name = row.get('Vendor Name', 'Unknown Vendor')
+        supplier_name = row.get('Supplier Name', 'Unknown Suppler')
         product_name = row.get('Products List', 'Unknown Product')
         
         # Ensure farm_price is a float
@@ -484,7 +269,7 @@ def compare_farm_prices_with_benchmarks(farm_data, benchmark_prices, selected_da
                 comparison_results.append({
                     "date_": date_,
                     "Products List": product_name,
-                    "Vendor Name": vendor_name,
+                    "Supplier Name": supplier_name,
                     "Location": location,
                     # "Farm Price (Unit Price)": farm_price,
                     "Min Farm Price": min_farm_price,
@@ -508,11 +293,11 @@ def get_min_avg_prices_by_location_and_date(farm_data, selected_date_range, sele
 
     # Group by Location, Date, and Product, then calculate the minimum and average price for each group
     location_date_prices = (
-        filtered_farm_data.groupby(["Location_x", "Timestamp", "Products List"])["Unit Price"]
+        filtered_farm_data.groupby(["Location", "Timestamp", "Products List"])["Unit Price"]
         .agg(Min_Farm_Price='min', Avg_Farm_Price='mean')
         .reset_index()
     )
-    # location_date_prices.columns = ["Location_x", "Timestamp", "Products List","Min Farm Price","Avg Farm Price"]
+    # location_date_prices.columns = ["Location", "Timestamp", "Products List","Min Farm Price","Avg Farm Price"]
     return location_date_prices
 
 
@@ -522,7 +307,7 @@ def compare_farm_prices_with_benchmarks_by_location(farm_data, benchmark_prices,
     # st.write(min_prices_by_location_and_date)
     for _, row in min_prices_by_location_and_date.iterrows():
         date_ = row['Timestamp']
-        location = row['Location_x']
+        location = row['Location']
         min_farm_price = row['Min_Farm_Price']
         avg_farm_price = row['Avg_Farm_Price']
         product_name = row.get('Products List', 'Unknown Product')  # Retrieve the product name
@@ -559,7 +344,7 @@ def compare_farm_prices_with_benchmarks_by_location(farm_data, benchmark_prices,
             comparison_results.append({
                 "date_": date_,
                 "Products List": product_name,
-                "Location_x": location,
+                "Location": location,
                 "Min Farm Price": min_farm_price,
                 "Avg Farm Price": avg_farm_price,
                 f"Min Price ({group})": min_price,
@@ -573,16 +358,13 @@ def compare_farm_prices_with_benchmarks_by_location(farm_data, benchmark_prices,
 
 
 
-# price_comparison_by_location_df = compare_farm_prices_with_benchmarks_by_location(farm_data_filtered, benchmark_prices, selected_date_range)
-
-
-# st.write(farm_data_filtered)
-
 # Use the function
-farm_data_filtered = merged_data[merged_data['Products List'] == selected_product]
+farm_data_filtered = survey_3[survey_3['Products List'] == selected_product]
 # st.write(farm_data_filtered)
 benchmark_prices = calculate_benchmark_prices(filtered_survey, selected_date_range, selected_product)
 price_comparison_df = compare_farm_prices_with_benchmarks(farm_data_filtered, benchmark_prices,selected_date_range)
+
+# st.write(price_comparison_df)
 min_prices_by_location_and_date = get_min_avg_prices_by_location_and_date(farm_data_filtered, selected_date_range, selected_product)
 # st.write(min_prices_by_location_and_date)
 # min_prices_by_location = get_min_prices_by_location(farm_data_filtered, selected_date_range, selected_product)
@@ -631,10 +413,10 @@ def aggregate_price_difference_by_frequency(df, frequency):
     for col in existing_avg_columns:
         agg_dict[col] = 'mean'
 
-    # Group by Vendor Name and selected frequency only for the existing columns
+    # Group by Supplier Name and selected frequency only for the existing columns
     if agg_dict:
         grouped_df = df.groupby([
-            'Vendor Name',
+            'Supplier Name',
             pd.Grouper(key='date_', freq=frequency)
         ]).agg(agg_dict).reset_index()
     else:
@@ -667,10 +449,10 @@ def aggregate_price_difference_by_frequency_location(df, frequency):
     for col in existing_avg_columns:
         agg_dict[col] = 'mean'
 
-    # Group by Vendor Name and selected frequency only for the existing columns
+    # Group by Supplier Name and selected frequency only for the existing columns
     if agg_dict:
         grouped_df = df.groupby([
-            'Location_x',
+            'Location',
             pd.Grouper(key='date_', freq=frequency)
         ]).agg(agg_dict).reset_index()
     else:
@@ -790,7 +572,7 @@ def visualize_min_avg_comparison(price_aggregated, selected_frequency, x_column,
 try:
     if not price_aggregated.empty:
         st.write(f"Visualizing Price Comparison for {selected_product} Between Vendors and Benchmark Markets")
-        visualize_min_avg_comparison(price_aggregated, selected_frequency, x_column='Vendor Name', xaxis_title='Vendor Name', chart_key_suffix='price_aggregated')
+        visualize_min_avg_comparison(price_aggregated, selected_frequency, x_column='Supplier Name', xaxis_title='Supplier Name', chart_key_suffix='price_aggregated')
     else:
         st.warning("No price comparison data found for the selected product and date range.")
 except Exception as e:
@@ -799,7 +581,7 @@ except Exception as e:
 try:
     if not price_by_location_aggregated.empty:
         st.write(f"Visualizing Price Comparison for {selected_product} Between Vendors and Benchmark Markets")
-        visualize_min_avg_comparison(price_by_location_aggregated, selected_frequency, x_column='Location_x', xaxis_title='Location', chart_key_suffix='price_by_location_aggregated')
+        visualize_min_avg_comparison(price_by_location_aggregated, selected_frequency, x_column='Location', xaxis_title='Location', chart_key_suffix='price_by_location_aggregated')
     else:
         st.warning("No price comparison data found for the selected product and date range.")
 except Exception as e:
@@ -823,7 +605,7 @@ def plot_price_trend(farm_data, selected_product, selected_vendor, selected_date
     # Filter data based on the selected product, vendor, and date range
     filtered_data = farm_data[
         (farm_data['Products List'] == selected_product) &
-        (farm_data['Vendor Name'] == selected_vendor) &
+        (farm_data['Supplier Name'] == selected_vendor) &
         (farm_data['date_'] >= start_date) &
         (farm_data['date_'] <= end_date)
     ]
@@ -841,7 +623,11 @@ def plot_price_trend(farm_data, selected_product, selected_vendor, selected_date
 
     # Format date for better readability (only date, no time)
     resampled_data['date_'] = resampled_data['date_'].dt.date
-
+    full_date_range = pd.date_range(
+        start_date, 
+        end_date,
+        freq='D'
+    )
     # Create the Plotly figure
     fig = go.Figure()
 
@@ -883,14 +669,19 @@ def plot_price_trend(farm_data, selected_product, selected_vendor, selected_date
         yaxis_title="Min Difference %",
         legend_title="Vendor Types",
         template="plotly_white",
-        xaxis=dict(tickformat="%Y-%m-%d")  # Format x-axis to show only dates
+        xaxis=dict(
+        tickmode='array',  # Define specific tick values
+        tickvals=full_date_range,  # Specify the tick positions (dates)
+        ticktext=[d.strftime('%Y-%m-%d') for d in full_date_range],  # Format tick labels
+        tickformat="%Y-%m-%d",  # Ensure date formatting
+        tickangle=-45
+    )
     )
 
     # Display the interactive Plotly plot in Streamlit
     st.plotly_chart(fig, use_container_width=True)
 
-# st.write(price_comparison_df)
-selected_vendor = st.sidebar.selectbox('Select Vendor', price_comparison_df['Vendor Name'].unique())
+selected_vendor = st.sidebar.selectbox('Select Vendor', price_comparison_df['Supplier Name'].unique())
 
 # Call the function to plot
 plot_price_trend(price_comparison_df, selected_product, selected_vendor, selected_date_range, selected_frequency)
